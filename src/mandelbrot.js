@@ -1,5 +1,3 @@
-import * as Pixi from 'pixi.js';
-
 const CX_BASE = -2.5;
 const CY_BASE = -1.1;
 
@@ -11,8 +9,8 @@ const MAX_COLOR_COMPONENT_VALUE = 255;
 export const tileCoords = (row, col, zoomLevel, tileSize) => {
   const pixelSize = BASE_PIXEL_SIZE / zoomLevel;
 
-  const minX = (col * tileSize * pixelSize) + (CX_BASE / zoomLevel);
-  const minY = (row * tileSize * pixelSize) + (CY_BASE / zoomLevel);
+  const minX = (col * tileSize * pixelSize);
+  const minY = (row * tileSize * pixelSize);
 
   return { minX, minY, pixelSize };
 };
@@ -73,7 +71,7 @@ const mandelbrotColor = (buffer, address, iterations) => {
 }
 
 
-export const getTexture = async (sprite, minX, minY, pixelSize, tileSize) => {
+export const getTextureBuffer = (minX, minY, pixelSize, tileSize) => {
   const buffer = new Uint8Array(tileSize * tileSize * 4);
   for (let col = 0; col < tileSize; col++) {
     const Cy = minY + (col * pixelSize);
@@ -87,6 +85,5 @@ export const getTexture = async (sprite, minX, minY, pixelSize, tileSize) => {
       mandelbrotColor(buffer, index, iterations);
     }
   }
-  const texture = Pixi.Texture.fromBuffer(buffer, tileSize, tileSize);
-  return texture;
+  return buffer;
 };

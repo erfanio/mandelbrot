@@ -1,6 +1,7 @@
 import * as Pixi from 'pixi.js';
 import { range } from './utility';
-import { getTexture, tileCoords } from './mandelbrot';
+import { getTextureBuffer, tileCoords } from './mandelbrot';
+import Worker from './worker.ws.js';
 
 const TILE_SIZE = 50;
 
@@ -9,13 +10,16 @@ class App {
   app = null
   tiles = new Map()
   spritePool = []
-  loadingTexture = null;
+  loadingTexture = null
+  workers = []
+  workerCallbacks = new Map()
   state = {
     draggingEventId: null,
     draggingOrigin: null,
     tilesRows: null,
     tilesCols: null,
     zoomLevel: 1,
+    useWorker: 0,
   }
 
   constructor() {
@@ -27,14 +31,20 @@ class App {
 
     this.container = new Pixi.Container();
     this.app.stage.addChild(this.container);
+    this.container.x = this.app.renderer.width / 2;
+    this.container.y = this.app.renderer.height / 2;
     this.container.interactive = true;
-    this.container.buttonMode = true;
     this.container
         .on('pointerdown', this.onDragStart)
         .on('pointerup', this.onDragEnd)
         .on('pointerupoutside', this.onDragEnd)
         .on('pointermove', this.onDragMove);
     window.addEventListener('keydown', this.onKeyDown, false);
+
+    this.workers.push(new Worker());
+    this.workers.push(new Worker());
+    this.workers.push(new Worker());
+    this.workers.forEach(worker => worker.addEventListener('message', this.handleWorkerMessage));
 
     // create sprites (twice the number that fits on the screen)
     const spriteCount = (this.app.renderer.width/TILE_SIZE) * (this.app.renderer.height/TILE_SIZE) * 2;
@@ -107,15 +117,8 @@ class App {
     requestAnimationFrame(() => {
       for (let row of range(rowMin, rowMax+1)) {
         for (let col of range(colMin, colMax+1)) {
-          const index = this.tileIndex(row, col);
-          const sprite = this.tiles.get(index);
-          const { minX, minY, pixelSize } = tileCoords(row, col, this.state.zoomLevel, TILE_SIZE);
-          getTexture(sprite, minX, minY, pixelSize, TILE_SIZE).then((texture) => {
-              // check if sprite is still in the same position before adding texture
-              if (this.tiles.get(index) == sprite) {
-                sprite.texture = texture;
-              }
-            });
+          const sprite = this.tiles.get(this.tileIndex(row, col));
+          this.addTexture(sprite, col, row);
         }
       }
     });
@@ -130,7 +133,7 @@ class App {
     return this.loadingTexture;
   }
 
-  addSprite = async (row, col) => {
+  addSprite = (row, col) => {
     const index = this.tileIndex(row, col);
     if (this.tiles.has(index)) return;
 
@@ -142,12 +145,39 @@ class App {
     this.container.addChild(sprite);
     this.tiles.set(index, sprite);
 
+    this.addTexture(sprite, col, row);
+  }
+
+  addTexture = async (sprite, col, row) => {
     // generate mandelbrot texture
+    const index = this.tileIndex(row, col);
     const { minX, minY, pixelSize } = tileCoords(row, col, this.state.zoomLevel, TILE_SIZE);
-    const texture = await getTexture(sprite, minX, minY, pixelSize, TILE_SIZE);
+    const buffer = await new Promise((res) => {
+      const callback = ({ buffer }) => res(buffer);
+      const msg = { id: index, minX, minY, pixelSize, tileSize: TILE_SIZE };
+      this.queueTask(index, msg, callback);
+    });
+
+    // const buffer = getTextureBuffer(minX, minY, pixelSize, TILE_SIZE);
+
     // check if sprite is still in the same position before adding texture
     if (this.tiles.get(index) == sprite) {
-      sprite.texture = texture;
+      sprite.texture = Pixi.Texture.fromBuffer(buffer, TILE_SIZE, TILE_SIZE);
+    }
+  }
+
+  queueTask = (id, msg, callback) => {
+    this.workerCallbacks.set(id, callback);
+    this.workers[this.state.useWorker].postMessage(msg);
+    this.state.useWorker = (this.state.useWorker+1)%this.workers.length;
+  }
+
+  handleWorkerMessage = (msg) => {
+    const { id, ...data } = msg.data;
+    if (this.workerCallbacks.has(id)) {
+      const fn = this.workerCallbacks.get(id);
+      fn(data);
+      this.workerCallbacks.delete(id);
     }
   }
 
