@@ -1,7 +1,7 @@
 import * as Pixi from 'pixi.js';
 import { range } from './utility';
 import { tileCoords } from './mandelbrot';
-import Worker from './worker.ws.js';
+import WorkerManager from './workerManager.js';
 
 const TILE_SIZE = 50;
 
@@ -11,8 +11,7 @@ class App {
   tiles = new Map()
   spritePool = []
   loadingTexture = null
-  workers = []
-  workerCallbacks = new Map()
+  workerManager = null
   state = {
     draggingEventId: null,
     draggingOrigin: null,
@@ -21,7 +20,6 @@ class App {
     tilesRows: null,
     tilesCols: null,
     zoomLevel: 1,
-    workerTaskId: 0,
   }
 
   constructor() {
@@ -43,10 +41,7 @@ class App {
         .on('pointermove', this.onMouseMove);
     window.addEventListener('keydown', this.onKeyDown, false);
 
-    this.workers.push(new Worker());
-    this.workers.push(new Worker());
-    this.workers.push(new Worker());
-    this.workers.forEach(worker => worker.addEventListener('message', this.handleWorkerMessage));
+    this.workerManager = new WorkerManager();
 
     // create sprites (twice the number that fits on the screen)
     const spriteCount = (this.app.renderer.width/TILE_SIZE) * (this.app.renderer.height/TILE_SIZE) * 2;
@@ -103,10 +98,9 @@ class App {
   }
 
   redrawTiles = () => {
-    const {
-      tileRows: [rowMin, rowMax],
-      tileCols: [colMin, colMax]
-    } = this.state;
+    const { tileRows: [rowMin, rowMax], tileCols: [colMin, colMax] } = this.state;
+
+    this.workerManager.clearTasks();
     for (let row of range(rowMin, rowMax+1)) {
       for (let col of range(colMin, colMax+1)) {
         const index = this.tileIndex(row, col);
@@ -144,36 +138,17 @@ class App {
   addTexture = async (sprite, col, row) => {
     // generate mandelbrot texture
     const index = this.tileIndex(row, col);
-    const { minX, minY, pixelSize } = tileCoords(row, col, this.state.zoomLevel, TILE_SIZE);
-    const buffer = await new Promise((res) => {
-      const msg = { minX, minY, pixelSize, tileSize: TILE_SIZE };
-      const callback = ({ buffer }) => res(buffer);
-      this.queueTask(msg, callback);
-    });
+    const { zoomLevel } = this.state;
+    const { minX, minY, pixelSize } = tileCoords(row, col, zoomLevel, TILE_SIZE);
 
-    // check if sprite is still in the same position before adding texture
-    if (this.tiles.get(index) == sprite) {
+    const maxIterations = 1000 * zoomLevel;
+    const msg = { minX, minY, pixelSize, tileSize: TILE_SIZE, maxIterations };
+    const { buffer } = await this.workerManager.runTask(msg);
+
+    // our task might have been cleared so check if we got a real buffer
+    // also check if sprite is still in the same position before adding texture
+    if (buffer && this.tiles.get(index) == sprite) {
       sprite.texture = Pixi.Texture.fromBuffer(buffer, TILE_SIZE, TILE_SIZE);
-    }
-  }
-
-  queueTask = (msg, callback) => {
-    // use an incremental number as the task id
-    const id = this.state.workerTaskId;
-    this.state.workerTaskId++;
-    // use the id to decide which worker to assign the task to
-    const workerId = id % this.workers.length;
-
-    this.workerCallbacks.set(id, callback);
-    this.workers[workerId].postMessage({ id, ...msg });
-  }
-
-  handleWorkerMessage = (msg) => {
-    const { id, ...data } = msg.data;
-    if (this.workerCallbacks.has(id)) {
-      const fn = this.workerCallbacks.get(id);
-      fn(data);
-      this.workerCallbacks.delete(id);
     }
   }
 
