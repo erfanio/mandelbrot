@@ -16,6 +16,8 @@ class App {
   state = {
     draggingEventId: null,
     draggingOrigin: null,
+    dragged: false,
+    mouseUpTs: null,
     tilesRows: null,
     tilesCols: null,
     zoomLevel: 1,
@@ -35,10 +37,10 @@ class App {
     this.container.y = this.app.renderer.height / 2;
     this.container.interactive = true;
     this.container
-        .on('pointerdown', this.onDragStart)
-        .on('pointerup', this.onDragEnd)
-        .on('pointerupoutside', this.onDragEnd)
-        .on('pointermove', this.onDragMove);
+        .on('pointerdown', this.onMouseDown)
+        .on('pointerup', this.onMouseUp)
+        .on('pointerupoutside', this.onMouseUp)
+        .on('pointermove', this.onMouseMove);
     window.addEventListener('keydown', this.onKeyDown, false);
 
     this.workers.push(new Worker());
@@ -221,30 +223,63 @@ class App {
     return { rows: [minRow, maxRow], cols: [minCol, maxCol] };
   }
 
+  scaleContainerPosition = (multiplier, width = null, height = null) => {
+    if (!width || !height) {
+      width = this.app.renderer.width / 2;
+      height = this.app.renderer.height / 2;
+    }
+    // normalise position before scaling the position
+    this.container.x -= width;
+    this.container.y -= height;
+
+    this.container.x *= multiplier;
+    this.container.y *= multiplier;
+
+    // return back to the position before normalisation
+    this.container.x += width;
+    this.container.y += height;
+  }
+
   onKeyDown = (event) => {
     if (event.key == '+') {
-      this.state.zoomLevel++;
+      this.state.zoomLevel *= 2;
+      this.scaleContainerPosition(2);
+      this.updateTiles();
       this.redrawTiles();
-    } else if (event.key == '-') {
-      this.state.zoomLevel--;
+    } else if (event.key == '-' && this.state.zoomLevel > 1) {
+      this.state.zoomLevel = this.state.zoomLevel/2;
+      this.scaleContainerPosition(1/2);
+      this.updateTiles();
       this.redrawTiles();
     }
   }
 
-  onDragStart = (event) => {
+  onMouseDown = (event) => {
     this.state.draggingEventId = event.data.identifier;
     this.state.draggingOrigin = event.data.getLocalPosition(this.container);
+    this.state.dragged = false;
   }
 
-  onDragEnd = () => {
+  onMouseUp = (event) => {
+    // hack to register double clicks in Pixi.js
+    if (!this.state.dragged && Date.now() - this.state.mouseUpTs < 300) {
+      this.state.zoomLevel *= 2;
+      const { x, y } = event.data.global;
+      this.scaleContainerPosition(2, x, y);
+      this.updateTiles();
+      this.redrawTiles();
+    }
+
+    this.state.mouseUpTs = Date.now();
     this.state.draggingEventId = null;
     this.state.draggingOrigin = null;
   }
 
-  onDragMove = (event) => {
+  onMouseMove = (event) => {
     const { draggingEventId, draggingOrigin } = this.state;
 
     if (draggingEventId == event.data.identifier) {
+      this.state.dragged = true;
       const newPosition = event.data.getLocalPosition(this.container.parent);
       this.container.x = newPosition.x - draggingOrigin.x;
       this.container.y = newPosition.y - draggingOrigin.y;
