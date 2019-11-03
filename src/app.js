@@ -1,6 +1,6 @@
 import * as Pixi from 'pixi.js';
 import { range } from './utility';
-import { getTextureBuffer, tileCoords } from './mandelbrot';
+import { tileCoords } from './mandelbrot';
 import Worker from './worker.ws.js';
 
 const TILE_SIZE = 50;
@@ -19,7 +19,7 @@ class App {
     tilesRows: null,
     tilesCols: null,
     zoomLevel: 1,
-    useWorker: 0,
+    workerTaskId: 0,
   }
 
   constructor() {
@@ -110,18 +110,9 @@ class App {
         const index = this.tileIndex(row, col);
         const sprite = this.tiles.get(index);
         sprite.texture = this.getLoadingTexture();
-
+        this.addTexture(sprite, col, row);
       }
     }
-
-    requestAnimationFrame(() => {
-      for (let row of range(rowMin, rowMax+1)) {
-        for (let col of range(colMin, colMax+1)) {
-          const sprite = this.tiles.get(this.tileIndex(row, col));
-          this.addTexture(sprite, col, row);
-        }
-      }
-    });
   }
 
   getLoadingTexture = () => {
@@ -153,12 +144,10 @@ class App {
     const index = this.tileIndex(row, col);
     const { minX, minY, pixelSize } = tileCoords(row, col, this.state.zoomLevel, TILE_SIZE);
     const buffer = await new Promise((res) => {
+      const msg = { minX, minY, pixelSize, tileSize: TILE_SIZE };
       const callback = ({ buffer }) => res(buffer);
-      const msg = { id: index, minX, minY, pixelSize, tileSize: TILE_SIZE };
-      this.queueTask(index, msg, callback);
+      this.queueTask(msg, callback);
     });
-
-    // const buffer = getTextureBuffer(minX, minY, pixelSize, TILE_SIZE);
 
     // check if sprite is still in the same position before adding texture
     if (this.tiles.get(index) == sprite) {
@@ -166,10 +155,15 @@ class App {
     }
   }
 
-  queueTask = (id, msg, callback) => {
+  queueTask = (msg, callback) => {
+    // use an incremental number as the task id
+    const id = this.state.workerTaskId;
+    this.state.workerTaskId++;
+    // use the id to decide which worker to assign the task to
+    const workerId = id % this.workers.length;
+
     this.workerCallbacks.set(id, callback);
-    this.workers[this.state.useWorker].postMessage(msg);
-    this.state.useWorker = (this.state.useWorker+1)%this.workers.length;
+    this.workers[workerId].postMessage({ id, ...msg });
   }
 
   handleWorkerMessage = (msg) => {
