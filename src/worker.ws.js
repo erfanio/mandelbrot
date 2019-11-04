@@ -6,7 +6,7 @@ const textureWorker = (id, { minX, minY, pixelSize, tileSize, maxN }, scale) => 
   const duration = performance.now() - start;
 
   const payload = { buffer };
-  self.postMessage({ id, payload }, [buffer.buffer]);
+  self.postMessage({ id, payload, finished: scale === 1 }, [buffer.buffer]);
 
   return duration;
 };

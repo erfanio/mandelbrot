@@ -44,7 +44,9 @@ class WorkerManager {
       res(payload);
 
       // remove callback if tile rendering is finished
-      if (finished) this._taskCallbacks.delete(id);
+      if (finished) {
+        this._taskCallbacks.delete(id);
+      }
     }
   }
 }

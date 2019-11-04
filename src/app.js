@@ -56,7 +56,7 @@ class App {
       this.spritePool.push(new Pixi.Sprite());
     }
 
-    this.updateTiles();
+    this.updateTiles(true);
   }
 
   updateHashState = () => {
@@ -74,12 +74,12 @@ class App {
       this.container.x = x;
       this.container.y = y;
       this.state.zoomLevel = zoom;
-      this.updateTiles();
+      this.updateTiles(false);
       this.redrawTiles();
     }
   }
 
-  updateTiles = () => {
+  updateTiles = (withTexture = false) => {
     const { rows: newRows, cols: newCols } = this.visibleTiles();
 
     let addRows = [];
@@ -111,12 +111,12 @@ class App {
     // delete old rows and columns
     for (let row of addRows) {
       for (let col = newCols[0]; col <= newCols[1]; col++) {
-        this.addSprite(row, col);
+        this.addSprite(row, col, withTexture);
       }
     }
     for (let col of addCols) {
       for (let row = newRows[0]; row <= newRows[1]; row++) {
-        this.addSprite(row, col);
+        this.addSprite(row, col, withTexture);
       }
     }
 
@@ -147,7 +147,7 @@ class App {
     return this.loadingTexture;
   }
 
-  addSprite = (row, col) => {
+  addSprite = (row, col, withTexture) => {
     const index = this.tileIndex(row, col);
     if (this.tiles.has(index)) return;
 
@@ -159,7 +159,7 @@ class App {
     this.container.addChild(sprite);
     this.tiles.set(index, sprite);
 
-    this.addTexture(sprite, col, row);
+    if (withTexture) this.addTexture(sprite, col, row);
   }
 
   addTexture = (sprite, col, row) => {
@@ -290,7 +290,7 @@ class App {
       this.container.x = newPosition.x - draggingOrigin.x;
       this.container.y = newPosition.y - draggingOrigin.y;
       this.updateHashState();
-      this.updateTiles();
+      this.updateTiles(true);
     }
   }
 };
