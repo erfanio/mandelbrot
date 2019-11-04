@@ -59,13 +59,13 @@ class App {
     this.updateTiles(true);
   }
 
-  updateHashState = () => {
+  updateHashState = (push = false) => {
     const state = {
       x: this.container.x,
       y: this.container.y,
       zoom: this.state.zoomLevel,
     };
-    setState(state);
+    setState(state, push);
   }
 
   handlePopState = () => {
