@@ -168,8 +168,8 @@ class App {
     const { zoomLevel } = this.state;
     const { minX, minY, pixelSize } = tileCoords(row, col, zoomLevel, TILE_SIZE);
 
-    const maxIterations = 1000 * zoomLevel;
-    const msg = { minX, minY, pixelSize, tileSize: TILE_SIZE, maxIterations };
+    const maxN = Math.trunc(1000 * Math.sqrt(zoomLevel));
+    const msg = { minX, minY, pixelSize, tileSize: TILE_SIZE, maxN };
     const { buffer } = await this.workerManager.runTask(msg);
 
     // our task might have been cleared so check if we got a real buffer
