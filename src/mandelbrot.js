@@ -82,18 +82,22 @@ const mandelbrotColor = (buffer, address, n, maxN) => {
 }
 
 
-export const getTextureBuffer = (minX, minY, pixelSize, tileSize, maxN) => {
+export const getTextureBuffer = (minX, minY, pixelSize, tileSize, maxN, scale) => {
   const buffer = new Uint8Array(tileSize * tileSize * 4);
-  for (let col = 0; col < tileSize; col++) {
-    const Cy = minY + (col * pixelSize);
-    const colIndex = col * tileSize * 4;
+  for (let c = 0; c < tileSize; c += scale) {
+    const Cy = minY + (c * pixelSize);
 
-    for (let row = 0; row < tileSize; row++) {
-      const Cx = minX + (row * pixelSize);
+    for (let r = 0; r < tileSize; r += scale) {
+      const Cx = minX + (r * pixelSize);
       const n = iterateZ(Cx, Cy, maxN);
 
-      const index = ((col * tileSize) + row) * 4;
-      mandelbrotColor(buffer, index, n, maxN);
+      // render to nearby pixels when scaled
+      for (let col = c; col < c + scale && c < tileSize; col++) {
+        for (let row = r; row < r + scale && row < tileSize; row++) {
+          const index = ((col * tileSize) + row) * 4;
+          mandelbrotColor(buffer, index, n, maxN);
+        }
+      }
     }
   }
   return buffer;

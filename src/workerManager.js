@@ -13,15 +13,13 @@ class WorkerManager {
     }
   }
 
-  runTask = async (payload) => {
+  runTask = (payload, callback) => {
     // use an sequential number as the task id
     const id = this._taskId++;
     const worker = this._workers[id % this._workers.length];
 
-    const result = new Promise((res) => this._taskCallbacks.set(id, res));
+    this._taskCallbacks.set(id, callback);
     worker.postMessage({ id, type: 'task', payload });
-
-    return result;
   }
 
   // remove all pending tasks and requests
@@ -37,14 +35,16 @@ class WorkerManager {
   }
 
   _handleMessage = (msg) => {
-    const { id, payload } = msg.data;
+    const { id, payload, finished } = msg.data;
 
     // check callback in case it has been cleared
     if (this._taskCallbacks.has(id)) {
-      // run callback and remove it after
+      // pass results back to the user
       const res = this._taskCallbacks.get(id);
       res(payload);
-      this._taskCallbacks.delete(id);
+
+      // remove callback if tile rendering is finished
+      if (finished) this._taskCallbacks.delete(id);
     }
   }
 }

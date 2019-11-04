@@ -162,21 +162,22 @@ class App {
     this.addTexture(sprite, col, row);
   }
 
-  addTexture = async (sprite, col, row) => {
+  addTexture = (sprite, col, row) => {
     // generate mandelbrot texture
     const index = this.tileIndex(row, col);
     const { zoomLevel } = this.state;
     const { minX, minY, pixelSize } = tileCoords(row, col, zoomLevel, TILE_SIZE);
 
+    const callback = ({ buffer }) => {
+      // our task might have been cleared so check if we got a real buffer
+      // also check if sprite is still in the same position before adding texture
+      if (buffer && this.tiles.get(index) == sprite) {
+        sprite.texture = Pixi.Texture.fromBuffer(buffer, TILE_SIZE, TILE_SIZE);
+      }
+    }
     const maxN = Math.trunc(1000 * Math.sqrt(zoomLevel));
     const msg = { minX, minY, pixelSize, tileSize: TILE_SIZE, maxN };
-    const { buffer } = await this.workerManager.runTask(msg);
-
-    // our task might have been cleared so check if we got a real buffer
-    // also check if sprite is still in the same position before adding texture
-    if (buffer && this.tiles.get(index) == sprite) {
-      sprite.texture = Pixi.Texture.fromBuffer(buffer, TILE_SIZE, TILE_SIZE);
-    }
+    this.workerManager.runTask(msg, callback);
   }
 
   removeSprite = (row, col) => {
@@ -195,8 +196,8 @@ class App {
     const add = [];
     const del = [];
 
-    const maxMax = Math.max(oldMax, newMax);
-    for (let i = Math.min(oldMin, newMin); i <= maxMax; i++) {
+    const combined = range(oldMin, oldMax+1).concat(range(newMin, newMax+1));
+    for (let i of combined) {
       if (newMin <= i && i <= newMax) {
         if (!(oldMin <= i && i <= oldMax)) {
           // inside new range but wasn't in the old range
