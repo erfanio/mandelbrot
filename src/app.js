@@ -1,7 +1,8 @@
 import * as Pixi from 'pixi.js';
 import { range } from './utility';
 import { tileCoords } from './mandelbrot';
-import WorkerManager from './workerManager.js';
+import { getState, setState } from './hashState';
+import WorkerManager from './workerManager';
 
 const TILE_SIZE = 50;
 
@@ -23,6 +24,9 @@ class App {
   }
 
   constructor() {
+    const hashState = getState();
+    this.state.zoomLevel = hashState.zoom || 1;
+
     this.app = new Pixi.Application({
       autoDensity: true,
       resizeTo: document.body,
@@ -31,8 +35,8 @@ class App {
 
     this.container = new Pixi.Container();
     this.app.stage.addChild(this.container);
-    this.container.x = this.app.renderer.width / 2;
-    this.container.y = this.app.renderer.height / 2;
+    this.container.x = hashState.x || this.app.renderer.width / 2;
+    this.container.y = hashState.y || this.app.renderer.height / 2;
     this.container.interactive = true;
     this.container
         .on('pointerdown', this.onMouseDown)
@@ -43,6 +47,9 @@ class App {
 
     this.workerManager = new WorkerManager();
 
+    this.updateHashState();
+    window.addEventListener('popstate', this.handlePopState);
+
     // create sprites (twice the number that fits on the screen)
     const spriteCount = (this.app.renderer.width/TILE_SIZE) * (this.app.renderer.height/TILE_SIZE) * 2;
     for (let i = 0; i < spriteCount; i++) {
@@ -50,6 +57,26 @@ class App {
     }
 
     this.updateTiles();
+  }
+
+  updateHashState = () => {
+    const state = {
+      x: this.container.x,
+      y: this.container.y,
+      zoom: this.state.zoomLevel,
+    };
+    setState(state);
+  }
+
+  handlePopState = () => {
+    const { x, y, zoom } = getState();
+    if (x != this.container.x || y != this.container.y || zoom != this.state.zoomLevel) {
+      this.container.x = x;
+      this.container.y = y;
+      this.state.zoomLevel = zoom;
+      this.updateTiles();
+      this.redrawTiles();
+    }
   }
 
   updateTiles = () => {
@@ -216,14 +243,16 @@ class App {
   }
 
   onKeyDown = (event) => {
-    if (event.key == '+') {
+    if (event.key == '+' || event.key == '=') {
       this.state.zoomLevel *= 2;
       this.scaleContainerPosition(2);
+      this.updateHashState(true);
       this.updateTiles();
       this.redrawTiles();
     } else if (event.key == '-' && this.state.zoomLevel > 1) {
       this.state.zoomLevel = this.state.zoomLevel/2;
       this.scaleContainerPosition(1/2);
+      this.updateHashState(true);
       this.updateTiles();
       this.redrawTiles();
     }
@@ -241,6 +270,7 @@ class App {
       this.state.zoomLevel *= 2;
       const { x, y } = event.data.global;
       this.scaleContainerPosition(2, x, y);
+      this.updateHashState(true);
       this.updateTiles();
       this.redrawTiles();
     }
@@ -258,6 +288,7 @@ class App {
       const newPosition = event.data.getLocalPosition(this.container.parent);
       this.container.x = newPosition.x - draggingOrigin.x;
       this.container.y = newPosition.y - draggingOrigin.y;
+      this.updateHashState();
       this.updateTiles();
     }
   }
